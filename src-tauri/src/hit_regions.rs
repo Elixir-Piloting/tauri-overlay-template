@@ -17,10 +17,13 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager, State, WebviewWindow};
-use windows::Win32::Foundation::POINT;
+use windows::Win32::Foundation::{HWND, POINT};
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-    SM_YVIRTUALSCREEN,
+    GetCursorPos, GetSystemMetrics, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE,
+    SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, WS_EX_TOOLWINDOW,
 };
 
 /// A rectangle in CSS pixels, relative to the window's top-left corner — i.e. the
@@ -119,16 +122,27 @@ pub fn update_hit_regions(state: State<'_, HitRegions>, regions: Vec<NamedRect>)
     state.replace(regions);
 }
 
-/// Grant (or conceptually release) keyboard focus for the overlay window.
+/// Grant (or release) keyboard focus for the overlay window.
+///
+/// The overlay is created `focusable: false` — tao adds `WS_EX_NOACTIVATE`, so
+/// clicks on it never activate the window and a fullscreen app underneath keeps
+/// focus and never tabs out or dims. To type into a focusable region we must
+/// temporarily lift that: `set_focusable(true)` clears `WS_EX_NOACTIVATE` (via
+/// tao's native style handling, which survives every style rewrite), then
+/// `set_focus()` foregrounds the window so the webview receives the keyboard.
+/// Releasing restores `WS_EX_NOACTIVATE` on the next poll tick.
 ///
 /// This is invoked from the frontend only in response to a real click inside a
 /// focusable region — never from the polling loop on hover/entry. Hover-triggered
 /// focus would steal keyboard input from other apps just because the cursor
-/// drifted over a region. The `focused: false` branch is intentionally a no-op:
-/// when the user clicks away from the overlay, click-through turns back on and
-/// the OS moves focus to whatever app actually received the click.
+/// drifted over a region. On release, click-through turns back on and the OS
+/// moves focus to whatever app actually received the click.
 #[tauri::command]
 pub fn set_overlay_focus(window: WebviewWindow, focused: bool) -> Result<(), String> {
+    // Re-enabling focusability is what actually clears WS_EX_NOACTIVATE so the
+    // subsequent set_focus() can foreground the window. Disabling it restores
+    // click-without-activation on the next poll tick.
+    window.set_focusable(focused).map_err(|e| e.to_string())?;
     if focused {
         window.set_focus().map_err(|e| e.to_string())?;
     }
@@ -147,6 +161,69 @@ pub fn virtual_desktop_bounds() -> (i32, i32, i32, i32) {
             GetSystemMetrics(SM_CXVIRTUALSCREEN),
             GetSystemMetrics(SM_CYVIRTUALSCREEN),
         )
+    }
+}
+
+/// Physical bounds the overlay window should cover: the virtual desktop minus
+/// the primary monitor's taskbar strip.
+///
+/// An always-on-top window that covers the screen edge blocks an auto-hide
+/// taskbar from revealing itself when the cursor reaches that edge, so the
+/// overlay is inset by the taskbar zone. Only edges where the strip sits on an
+/// outer edge of the virtual desktop are inset, keeping the window a single
+/// rectangle. A taskbar on an *interior* monitor edge (primary monitor not at
+/// the virtual-desktop boundary) is not subtracted — that arrangement would
+/// require a non-rectangular window, which the size-once design doesn't support.
+pub fn overlay_bounds() -> (i32, i32, i32, i32) {
+    let (mut x, mut y, mut w, mut h) = virtual_desktop_bounds();
+
+    // The primary monitor is always at (0, 0) in virtual-desktop coordinates.
+    // SAFETY: MonitorFromPoint is safe to call; POINT(0,0) with
+    // MONITOR_DEFAULTTOPRIMARY always yields the primary monitor.
+    let primary = unsafe { MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY) };
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: GetMonitorInfoW writes into a valid MONITORINFO with cbSize set;
+    // the windows crate maps the OS error value into the returned BOOL.
+    if unsafe { GetMonitorInfoW(primary, &mut info) }.as_bool() {
+        let full = info.rcMonitor;
+        let work = info.rcWork;
+
+        // Taskbar zone = full minus work; inset only outer edges of the VD.
+        if work.left > full.left && full.left <= x {
+            let inset = work.left - full.left;
+            x += inset;
+            w -= inset;
+        }
+        if work.top > full.top && full.top <= y {
+            let inset = work.top - full.top;
+            y += inset;
+            h -= inset;
+        }
+        if work.right < full.right && full.right >= x + w {
+            w -= full.right - work.right;
+        }
+        if work.bottom < full.bottom && full.bottom >= y + h {
+            h -= full.bottom - work.bottom;
+        }
+    }
+
+    (x, y, w, h)
+}
+
+/// Keep the overlay out of Alt-Tab. `WS_EX_TOOLWINDOW` hides a window from the
+/// taskbar AND from Alt-Tab, but tao's `apply_diff` replaces the entire extended
+/// style on every flag change, so this is re-asserted on every poll tick.
+/// Read-modify-write only fires when the bit is actually missing.
+fn assert_toolwindow(hwnd: HWND) {
+    // SAFETY: hwnd is a top-level window owned by this process.
+    unsafe {
+        let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        if current != 0 && (current & WS_EX_TOOLWINDOW.0 as isize) == 0 {
+            let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, current | WS_EX_TOOLWINDOW.0 as isize);
+        }
     }
 }
 
@@ -169,13 +246,14 @@ pub fn spawn_cursor_poll_thread(app: AppHandle) {
         let Some(window) = app.get_webview_window("main") else {
             return;
         };
+        let hwnd = window.hwnd().ok();
 
         // Freeze scale/offset once. The window is sized and positioned exactly
         // once at startup and never moves again, so these never need re-reading.
         {
             let state = app.state::<HitRegions>();
             let mut inner = state.inner.lock().unwrap();
-            inner.scale_factor = window.scale_factor().unwrap_or(1.0) as f64;
+            inner.scale_factor = window.scale_factor().unwrap_or(1.0);
             if let Ok(pos) = window.outer_position() {
                 inner.offset_x = pos.x as f64;
                 inner.offset_y = pos.y as f64;
@@ -184,6 +262,10 @@ pub fn spawn_cursor_poll_thread(app: AppHandle) {
 
         let mut last_ignore: Option<bool> = None;
         loop {
+            if let Some(hwnd) = hwnd {
+                assert_toolwindow(hwnd);
+            }
+
             let should_ignore = match cursor_position() {
                 Some((x, y)) => {
                     let state = app.state::<HitRegions>();

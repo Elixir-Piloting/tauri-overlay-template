@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { HitRegionProvider } from "@/lib/hit-regions";
+import { OverlayLifecycle } from "@/lib/overlay-lifecycle";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,7 +30,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="h-full">
-        <HitRegionProvider>{children}</HitRegionProvider>
+        <HitRegionProvider>
+          <OverlayLifecycle />
+          {children}
+        </HitRegionProvider>
       </body>
     </html>
   );

@@ -28,12 +28,14 @@ underneath.
 
 - `lib.rs` — app setup. The window is created from `tauri.conf.json`
   (`transparent`, `decorations: false`, `alwaysOnTop`, `skipTaskbar`,
-  `resizable: false`, `focusable: true`), then in `setup()` it is sized **once**
+  `resizable: false`, `focusable: false`), then in `setup()` it is sized **once**
   to cover the combined virtual desktop (all monitors, via
-  `GetSystemMetrics(SM_*VIRTUALSCREEN)`), positioned at the virtual desktop
-  origin, made click-through, shown, and the polling thread is spawned. It is
-  never resized or repositioned again — the hit-region math depends on the
-  geometry being frozen.
+  `GetSystemMetrics(SM_*VIRTUALSCREEN)`) **minus the primary monitor's taskbar
+  strip**, positioned at the virtual desktop origin, made click-through, shown,
+  and the polling thread is spawned. It is never resized or repositioned again —
+  the hit-region math depends on the geometry being frozen. The taskbar-strip
+  exclusion is what keeps an auto-hide taskbar able to reveal at the screen edge
+  (an always-on-top window covering that edge blocks it).
 - `hit_regions.rs` — the core reusable piece:
   - **Shared state**: `HitRegions`, a `Mutex<HashMap<String, Rect>>` plus the
     window's frozen scale factor, screen offset, and hysteresis, registered as
@@ -47,13 +49,21 @@ underneath.
     converts CSS rects to physical screen pixels (scale factor + window offset),
     and calls `set_ignore_cursor_events(true)` when the cursor is inside no rect
     and `false` when it's inside any rect — **only on state changes**, never on
-    every tick. This loop only ever touches click-through state, never focus.
+    every tick. This loop only ever touches click-through state, never focus. It
+    also re-asserts `WS_EX_TOOLWINDOW` each tick to keep the overlay out of
+    Alt-Tab (tao replaces the whole extended style on any flag change, wiping
+    styles set once).
   - **Hysteresis** — every rect edge is expanded by a small buffer (default 3
     physical px) before the inside test, so a cursor sitting exactly on a
     boundary doesn't make the click-through toggle flicker at 60 Hz.
-  - **`set_overlay_focus(focused)`** command — wraps `set_focus()`. Only called
-    from the frontend on an actual click inside a focusable region (see below),
-    never by the polling loop on hover/entry.
+  - **`set_overlay_focus(focused)`** command — the window is created
+    `focusable: false`, so tao gives it `WS_EX_NOACTIVATE`: clicking the overlay
+    never activates it, and a fullscreen app underneath keeps focus (no dimming,
+    no tab-out). Granting focus calls `set_focusable(true)` (clears
+    `WS_EX_NOACTIVATE` via tao's native handling) then `set_focus()`;
+    releasing calls `set_focusable(false)` to restore click-without-activation.
+    Only called from the frontend on an actual click inside a focusable region
+    (see below), never by the polling loop on hover/entry.
   - `focusable` is **metadata on the rect only**. The polling loop ignores it.
 
 ### Frontend side — `src/lib/hit-regions/`
@@ -139,7 +149,18 @@ frontend also runs under plain `next dev` in a browser.
   swallows clicks. `useHitRegion` handles this automatically — don't bypass it.
 - **Focus stealing.** `set_overlay_focus(true)` takes keyboard focus away from
   other apps. That's why it is click-driven, never hover-driven, and why the
-  polling loop never calls it.
+  polling loop never calls it. (Merely *clicking* the overlay never steals focus:
+  the window is `focusable: false`, so clicks are no-activate; only the explicit
+  focus grant lifts that.)
+- **No-activate vs. fullscreen apps.** Because the overlay is `focusable: false`
+  (`WS_EX_NOACTIVATE`), interacting with it never dims or tabs out a fullscreen
+  app underneath — the game keeps focus. The one exception is typing in a
+  `focusable: true` region, which intentionally foregrounds the overlay.
+- **Taskbar exclusion.** The window is sized to exclude the primary monitor's
+  taskbar strip so an auto-hide taskbar can still reveal at the screen edge. If
+  the primary monitor sits *inside* the virtual desktop (a taskbar on an
+  interior edge), that edge is not excluded — that would need a non-rectangular
+  window.
 - **Whole-window granularity.** Click-through is per-window, not per-pixel. When
   the cursor is over *any* region, the *entire* window captures the cursor; a
   click on empty overlay area next to a region hits the webview, not the app
