@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tauri Overlay Template
 
-## Getting Started
+Always-on-top, click-through-capable desktop overlay apps for Windows, built on
+**Tauri v2** + **Next.js** (static export). Dynamic island / floating bubble /
+voice indicator style UIs, where a transparent full-screen window ignores mouse
+events everywhere except over the small interactive widgets you declare.
 
-First, run the development server:
+## Quick start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm tauri dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+A transparent overlay window covers your whole desktop. Click the island to
+expand/collapse it; drag the panel anywhere; type in the search box. Everything
+else on screen clicks through to the apps underneath.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Highlights
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Selective click-through** — a Rust background thread polls the cursor at
+  60 Hz and flips `set_ignore_cursor_events` based on the hit regions the
+  frontend declares (with hysteresis to prevent boundary flicker).
+- **`<HitRegion>` API** — wrap any element's root; it becomes interactive while
+  the cursor is over it and click-through everywhere else. Bounds follow Framer
+  Motion animations and drags automatically.
+- **Focusable regions** — click-driven keyboard focus (never hover-driven, so
+  the cursor can't steal input from other apps).
+- **Static export** — `next build` emits `out/`, which Tauri serves with no Node
+  runtime.
 
-## Learn More
+## Docs
 
-To learn more about Next.js, take a look at the following resources:
+Read **`AGENTS.md`** — it covers the architecture, the `<HitRegion>` API, how to
+add a new overlay element, known gotchas, and prior-art links.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Commands
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+pnpm tauri dev        # dev (Next dev server + hot-reload app)
+pnpm tauri build      # release bundle
+pnpm build            # static export -> out/
+pnpm start            # browser-only preview of out/
+pnpm lint             # eslint
+```
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> Windows-only by design (Win32 cursor/virtual-desktop/transparency APIs).

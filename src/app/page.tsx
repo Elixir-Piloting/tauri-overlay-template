@@ -1,65 +1,81 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState } from "react";
+import { motion } from "motion/react";
+import { HitRegion } from "@/lib/hit-regions";
+
+/**
+ * One HTML surface hosting two overlay elements, proving the hit-region system
+ * end-to-end:
+ *
+ * 1. A top-anchored "island" that expands/collapses on click (Framer Motion).
+ *    Its hit region follows the size animation because useHitRegion samples
+ *    getBoundingClientRect() every frame.
+ * 2. A draggable panel (Framer Motion `drag`). Its hit region follows the drag
+ *    the same way, and it is `focusable` so the search input can take the
+ *    keyboard (granted on click, never on hover).
+ */
+export default function OverlayPage() {
+  const [expanded, setExpanded] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <main className="fixed inset-0 overflow-hidden">
+      <HitRegion id="island">
+        <motion.button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          initial={false}
+          animate={{ width: expanded ? 320 : 148, height: expanded ? 88 : 44 }}
+          transition={{ type: "spring", stiffness: 320, damping: 28 }}
+          className="absolute left-1/2 top-6 -translate-x-1/2 flex items-center justify-center gap-2.5 overflow-hidden rounded-full bg-black/85 px-5 text-white shadow-2xl backdrop-blur-md cursor-pointer"
+        >
+          <span
+            className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+              expanded ? "bg-emerald-400" : "bg-sky-400"
+            }`}
+          />
+          <span className="whitespace-nowrap text-sm font-medium">
+            {expanded ? "Expanded island" : "Island"}
+          </span>
+          {expanded && (
+            <span className="whitespace-nowrap text-xs text-white/60">
+              click to collapse
+            </span>
+          )}
+        </motion.button>
+      </HitRegion>
+
+      {panelOpen && (
+        <HitRegion id="panel" focusable>
+          <motion.div
+            drag
+            dragMomentum={false}
+            dragElastic={0.15}
+            className="absolute right-8 top-1/2 w-64 rounded-2xl border border-neutral-200 bg-white/90 p-4 text-neutral-900 shadow-2xl backdrop-blur-md cursor-grab active:cursor-grabbing"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Draggable panel</h2>
+              <button
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => setPanelOpen(false)}
+                className="text-xs text-neutral-400 hover:text-neutral-700 cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-neutral-500">
+              Drag me anywhere — the hit region follows via rAF sampling. Click
+              the island to see the other region resize live.
+            </p>
+            <input
+              placeholder="Search (click to focus)"
+              className="mt-3 w-full rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-sky-400"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+          </motion.div>
+        </HitRegion>
+      )}
+    </main>
   );
 }
