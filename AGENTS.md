@@ -31,12 +31,15 @@ this template as git dependencies:
   the Rust side: the cursor-polling loop with hysteresis, the
   `update_hit_regions` / `set_overlay_focus` commands, the watchdog
   (`overlay-ready` / `overlay-heartbeat` / `overlay-fatal`; show-on-ready,
-  hide/exit on stale heartbeats), the `NonRudeHWND` taskbar fix, and
-  `overlay_bounds()`. Consumed as
+  hide/exit on stale heartbeats), the `NonRudeHWND` taskbar fix,
+  `overlay_bounds()`, and — since v1.2.0 — the `cursor_position` command plus
+  the `cursor-moved` event (global cursor in logical CSS pixels, emitted from
+  the existing poll loop). Consumed as
   `hit_regions = { package = "hit-regions-rs", git = "https://github.com/Elixir-Piloting/hit-regions-rs", tag = "v1.0.0" }`.
 - **[`hit-regions-web`](https://github.com/Elixir-Piloting/hit-regions-web)** —
-  the frontend side: `HitRegionProvider`, `useHitRegion`, `<HitRegion>`, and
-  `useOverlayLifecycle` (the watchdog liveness events). Consumed as
+  the frontend side: `HitRegionProvider`, `useHitRegion`, `<HitRegion>`,
+  `useOverlayLifecycle` (the watchdog liveness events), and — since v1.3.0 —
+  `useCursorPosition` (live cursor updates via `cursor-moved`). Consumed as
   `"hit-regions-web": "github:Elixir-Piloting/hit-regions-web#v1.1.0"`.
 
 This template is a **consumer** of both: `src-tauri/src/` only holds the app's
@@ -79,7 +82,8 @@ How the engine works (summarized from the `hit-regions-rs` README):
   every tick. This loop only ever touches click-through state, never focus. It
   also re-asserts `WS_EX_TOOLWINDOW` each tick to keep the overlay out of
   Alt-Tab (tao replaces the whole extended style on any flag change, wiping
-  styles set once).
+  styles set once). The same tick also emits `cursor-moved` (engine ≥ v1.2.0)
+  — the cursor's logical window-relative position — when it changes.
 - **`mark_non_rude(hwnd)`** — sets the undocumented `NonRudeHWND` window
   property (the same one the Alt-Tab window carries) so the shell's Rude
   Window Manager does not classify the full-desktop overlay as "full-screen"
@@ -124,6 +128,10 @@ How the engine works (summarized from the `hit-regions-rs` README):
   `overlay-fatal` (debounced) on a JS error or unhandled rejection, all behind
   `isTauri()`. This template mounts it via the `OverlayLifecycle` component in
   `src/lib/overlay-lifecycle.tsx`.
+- `useCursorPosition()` (engine ≥ v1.3.0) — the latest global cursor position
+  in logical CSS pixels relative to the window's top-left, updated live via the
+  `cursor-moved` event. Not gated by click-through state. This template does
+  **not** consume it yet (its pins predate the feature).
 
 ### `<HitRegion>` API
 
@@ -259,6 +267,11 @@ template when the tag it pins moves:
 - **Web** — `package.json`:
   `"hit-regions-web": "github:Elixir-Piloting/hit-regions-web#v1.1.0"`.
   Bump by editing the `#v1.1.0` ref to a newer tag, then run `pnpm install`.
+
+The cursor-position features are available from **hit-regions-rs v1.2.0** and
+**hit-regions-web v1.3.0**; this template's pins are older, so it doesn't
+consume them yet. To adopt them, bump the pins above and add
+`hit_regions::cursor_position` to the `invoke_handler!` in `lib.rs`.
 
 To cut a new release of an engine: push the changes to that repo's `main`,
 create a new semver tag (`git tag v1.1.0` + `git push origin v1.1.0`), then point
