@@ -122,6 +122,13 @@ pub fn show_window(app: &AppHandle) {
         if let Err(e) = window.show() {
             log::error!("failed to show overlay window: {e}");
         }
+        // Re-assert the NonRudeHWND exemption on every show/hide cycle: each
+        // re-show re-enters the shell's full-screen set, so the Rude Window
+        // Manager's exit-message poke must be re-sent or the taskbar can get
+        // stuck with always-on-top off.
+        if let Ok(hwnd) = window.hwnd() {
+            crate::hit_regions::mark_non_rude(hwnd);
+        }
     }
 }
 

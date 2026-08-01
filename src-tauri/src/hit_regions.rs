@@ -17,13 +17,15 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager, State, WebviewWindow};
-use windows::Win32::Foundation::{HWND, POINT};
+use windows::core::{w, BOOL};
+use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetSystemMetrics, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE,
-    SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, WS_EX_TOOLWINDOW,
+    EnumWindows, GetCursorPos, GetSystemMetrics, GetWindowLongPtrW, PostMessageW,
+    RegisterWindowMessageW, SetPropW, SetWindowLongPtrW, GWL_EXSTYLE, SM_CXVIRTUALSCREEN,
+    SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, WS_EX_TOOLWINDOW,
 };
 
 /// A rectangle in CSS pixels, relative to the window's top-left corner — i.e. the
@@ -224,6 +226,66 @@ fn assert_toolwindow(hwnd: HWND) {
         if current != 0 && (current & WS_EX_TOOLWINDOW.0 as isize) == 0 {
             let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, current | WS_EX_TOOLWINDOW.0 as isize);
         }
+    }
+}
+
+/// Undocumented shell-hook code: a window left full-screen mode.
+/// The kernel generates `0x35`/`0x36` ("fullscreen enter"/"fullscreen exit")
+/// from window dimension changes; the Rude Window Manager consumes them.
+const HSHELL_UNDOCUMENTED_FULLSCREEN_EXIT: u32 = 0x36;
+/// `HSHELL_MONITORCHANGED` — processing this forces
+/// `CGlobalRudeWindowManager::RecalculateRudeWindowState()` to re-run.
+const HSHELL_MONITORCHANGED: u32 = 16;
+
+/// Mark `hwnd` as exempt from the Rude Window Manager's full-screen detection.
+///
+/// A transparent, always-on-top window covering the whole desktop is classified
+/// by the shell as a "full-screen" window (the same bug class as the NVIDIA
+/// GeForce Experience overlay). That makes the monitor "rude": the taskbar drops
+/// its always-on-top property and an auto-hide taskbar stops revealing at the
+/// screen edge. Setting the undocumented `NonRudeHWND` window property (the same
+/// one the Alt-Tab window carries) tells the Rude Window Manager to ignore this
+/// window, then we poke it to recalculate immediately.
+///
+/// This is a per-window property, not an ex-style bit, so it survives tao's
+/// style rewrites (`apply_diff`) untouched. Call it once after the window is
+/// sized in `setup()` and again on every `show_window()` — the watchdog's
+/// hide/show cycle re-enters the full-screen set, so the exit-message poke must
+/// be re-sent.
+pub fn mark_non_rude(hwnd: HWND) {
+    // SAFETY: hwnd is a top-level window owned by this process.
+    unsafe {
+        let _ = SetPropW(hwnd, w!("NonRudeHWND"), Some(HANDLE(-1isize as *mut _)));
+
+        let shellhook_msg = RegisterWindowMessageW(w!("SHELLHOOK"));
+        if shellhook_msg == 0 {
+            return;
+        }
+
+        broadcast_shellhook(shellhook_msg, HSHELL_UNDOCUMENTED_FULLSCREEN_EXIT, hwnd.0 as isize);
+        broadcast_shellhook(shellhook_msg, HSHELL_MONITORCHANGED, 0);
+    }
+}
+
+/// Emulate `BroadcastSystemMessage(BSF_POSTMESSAGE | BSF_IGNORECURRENTTASK)`,
+/// which the `windows` crate does not expose, by posting the registered
+/// `SHELLHOOK` message to every top-level window. The Rude Window Manager's
+/// listener is a top-level window, so it receives the poke. This is the same
+/// "shotgun" approach RudeWindowFixer takes.
+fn broadcast_shellhook(msg: u32, wparam: u32, lparam: isize) {
+    // SAFETY: `ctx` points at a `(u32, u32, isize)` tuple that lives on the stack
+    // of `broadcast_shellhook` for the full (synchronous) duration of the
+    // enumeration; `PostMessageW` copies the parameters out immediately.
+    unsafe extern "system" fn enum_proc(hwnd: HWND, ctx: LPARAM) -> BOOL {
+        let (msg, wparam, lparam) = *unsafe { &*(ctx.0 as *const (u32, u32, isize)) };
+        let _ = unsafe { PostMessageW(Some(hwnd), msg, WPARAM(wparam as usize), LPARAM(lparam)) };
+        BOOL(1)
+    }
+
+    let payload = (msg, wparam, lparam);
+    // SAFETY: payload is valid for the duration of EnumWindows.
+    unsafe {
+        let _ = EnumWindows(Some(enum_proc), LPARAM(&payload as *const _ as isize));
     }
 }
 

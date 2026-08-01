@@ -3,7 +3,7 @@ mod overlay_watchdog;
 
 use std::sync::Arc;
 
-use hit_regions::{overlay_bounds, spawn_cursor_poll_thread, HitRegions};
+use hit_regions::{mark_non_rude, overlay_bounds, spawn_cursor_poll_thread, HitRegions};
 use overlay_watchdog::{exit_app, show_window, spawn_watchdog, Watchdog};
 use tauri::{
     menu::{Menu, MenuItem},
@@ -54,6 +54,15 @@ pub fn run() {
       let (x, y, w, h) = overlay_bounds();
       window.set_position(Position::Physical(PhysicalPosition::new(x, y)))?;
       window.set_size(Size::Physical(PhysicalSize::new(w as u32, h as u32)))?;
+
+      // Exempt the overlay from the shell's Rude Window Manager before it ever
+      // shows. A transparent, always-on-top, full-desktop window would otherwise
+      // be classified as "full-screen", which pins the taskbar's always-on-top
+      // property off and blocks an auto-hide taskbar from revealing at the
+      // screen edge. See mark_non_rude() in hit_regions.rs.
+      if let Ok(hwnd) = window.hwnd() {
+        mark_non_rude(hwnd);
+      }
 
       // Fully click-through by default; the polling loop in hit_regions.rs
       // manages this from here on.
