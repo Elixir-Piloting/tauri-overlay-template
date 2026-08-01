@@ -12,8 +12,8 @@ importers:
         specifier: ^2.11.1
         version: 2.11.1
       hit-regions-web:
-        specifier: github:Elixir-Piloting/hit-regions-web#v1.0.0
-        version: https://codeload.github.com/Elixir-Piloting/hit-regions-web/tar.gz/92f33ff658a47fd792c12bcd646c4827c603b70e(@tauri-apps/api@2.11.1)(react@19.2.4)
+        specifier: github:Elixir-Piloting/hit-regions-web#v1.1.0
+        version: https://codeload.github.com/Elixir-Piloting/hit-regions-web/tar.gz/3fec2db8458d3180c35c76925ec7c58acc090511(@tauri-apps/api@2.11.1)(react@19.2.4)
       motion:
         specifier: ^12.43.0
         version: 12.43.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1463,9 +1463,9 @@ packages:
   hermes-parser@0.25.1:
     resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
-  hit-regions-web@https://codeload.github.com/Elixir-Piloting/hit-regions-web/tar.gz/92f33ff658a47fd792c12bcd646c4827c603b70e:
-    resolution: {tarball: https://codeload.github.com/Elixir-Piloting/hit-regions-web/tar.gz/92f33ff658a47fd792c12bcd646c4827c603b70e}
-    version: 1.0.0
+  hit-regions-web@https://codeload.github.com/Elixir-Piloting/hit-regions-web/tar.gz/3fec2db8458d3180c35c76925ec7c58acc090511:
+    resolution: {tarball: https://codeload.github.com/Elixir-Piloting/hit-regions-web/tar.gz/3fec2db8458d3180c35c76925ec7c58acc090511}
+    version: 1.1.0
     peerDependencies:
       '@tauri-apps/api': '>=2'
       react: '>=18'
@@ -3841,7 +3841,7 @@ snapshots:
     dependencies:
       hermes-estree: 0.25.1
 
-  hit-regions-web@https://codeload.github.com/Elixir-Piloting/hit-regions-web/tar.gz/92f33ff658a47fd792c12bcd646c4827c603b70e(@tauri-apps/api@2.11.1)(react@19.2.4):
+  hit-regions-web@https://codeload.github.com/Elixir-Piloting/hit-regions-web/tar.gz/3fec2db8458d3180c35c76925ec7c58acc090511(@tauri-apps/api@2.11.1)(react@19.2.4):
     dependencies:
       '@tauri-apps/api': 2.11.1
       react: 19.2.4

@@ -35,8 +35,9 @@ this template as git dependencies:
   `overlay_bounds()`. Consumed as
   `hit_regions = { package = "hit-regions-rs", git = "https://github.com/Elixir-Piloting/hit-regions-rs", tag = "v1.0.0" }`.
 - **[`hit-regions-web`](https://github.com/Elixir-Piloting/hit-regions-web)** —
-  the frontend side: `HitRegionProvider`, `useHitRegion`, `<HitRegion>`.
-  Consumed as `"hit-regions-web": "github:Elixir-Piloting/hit-regions-web#v1.0.0"`.
+  the frontend side: `HitRegionProvider`, `useHitRegion`, `<HitRegion>`, and
+  `useOverlayLifecycle` (the watchdog liveness events). Consumed as
+  `"hit-regions-web": "github:Elixir-Piloting/hit-regions-web#v1.1.0"`.
 
 This template is a **consumer** of both: `src-tauri/src/` only holds the app's
 own wiring (`lib.rs`), and `src/` only holds the example overlay UI. See
@@ -118,6 +119,11 @@ How the engine works (summarized from the `hit-regions-rs` README):
 - `<HitRegion id="..." focusable={false}>{children}</HitRegion>` — the primary
   developer-facing API. Wraps exactly one child element (the region's root) and
   forwards the measuring ref onto it.
+- `useOverlayLifecycle()` — the watchdog glue, callable from any client
+  component. Emits `overlay-ready` on mount, `overlay-heartbeat` every 2s, and
+  `overlay-fatal` (debounced) on a JS error or unhandled rejection, all behind
+  `isTauri()`. This template mounts it via the `OverlayLifecycle` component in
+  `src/lib/overlay-lifecycle.tsx`.
 
 ### `<HitRegion>` API
 
@@ -251,8 +257,8 @@ template when the tag it pins moves:
   Bump by editing `tag = "..."` to a newer tag, then run `cargo update` from
   `src-tauri/`.
 - **Web** — `package.json`:
-  `"hit-regions-web": "github:Elixir-Piloting/hit-regions-web#v1.0.0"`.
-  Bump by editing the `#v1.0.0` ref to a newer tag, then run `pnpm install`.
+  `"hit-regions-web": "github:Elixir-Piloting/hit-regions-web#v1.1.0"`.
+  Bump by editing the `#v1.1.0` ref to a newer tag, then run `pnpm install`.
 
 To cut a new release of an engine: push the changes to that repo's `main`,
 create a new semver tag (`git tag v1.1.0` + `git push origin v1.1.0`), then point
