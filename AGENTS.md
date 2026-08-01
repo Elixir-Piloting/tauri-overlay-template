@@ -30,12 +30,14 @@ underneath.
   (`transparent`, `decorations: false`, `alwaysOnTop`, `skipTaskbar`,
   `resizable: false`, `focusable: false`), then in `setup()` it is sized **once**
   to cover the combined virtual desktop (all monitors, via
-  `GetSystemMetrics(SM_*VIRTUALSCREEN)`) **minus the primary monitor's taskbar
-  strip**, positioned at the virtual desktop origin, made click-through, shown,
-  and the polling thread is spawned. It is never resized or repositioned again —
-  the hit-region math depends on the geometry being frozen. The taskbar-strip
-  exclusion is what keeps an auto-hide taskbar able to reveal at the screen edge
-  (an always-on-top window covering that edge blocks it).
+  `GetSystemMetrics(SM_*VIRTUALSCREEN)`), positioned at the virtual desktop
+  origin, made click-through, exempted from the shell's Rude Window Manager
+  (`mark_non_rude`, see below), and the polling thread is spawned. It is never
+  resized or repositioned again — the hit-region math depends on the geometry
+  being frozen. The window is **not** shown in `setup()`: it stays hidden until
+  the frontend emits `overlay-ready` (so a dead dev server can never put a
+  full-screen takeover on screen), with the `overlay_watchdog` enforcing a
+  timeout in case readiness never arrives.
 - `hit_regions.rs` — the core reusable piece:
   - **Shared state**: `HitRegions`, a `Mutex<HashMap<String, Rect>>` plus the
     window's frozen scale factor, screen offset, and hysteresis, registered as
@@ -53,6 +55,18 @@ underneath.
     also re-asserts `WS_EX_TOOLWINDOW` each tick to keep the overlay out of
     Alt-Tab (tao replaces the whole extended style on any flag change, wiping
     styles set once).
+  - **`mark_non_rude(hwnd)`** — sets the undocumented `NonRudeHWND` window
+    property (the same one the Alt-Tab window carries) so the shell's Rude
+    Window Manager does not classify the full-desktop overlay as "full-screen"
+    — which would pin the taskbar's always-on-top off and block an auto-hide
+    taskbar from revealing at the screen edge. Follows up with `SHELLHOOK`
+    broadcasts (`HSHELL_UNDOCUMENTED_FULLSCREEN_EXIT` `0x36` +
+    `HSHELL_MONITORCHANGED`, emulated via `EnumWindows` + `PostMessageW` since
+    `BroadcastSystemMessage` isn't in the `windows` crate) to force an immediate
+    recalculation. A per-window property, not an ex-style bit, so it survives
+    tao's style rewrites. Called in `setup()` after sizing, and re-asserted on
+    every show/hide cycle by the watchdog's `show_window()` (each re-show
+    re-enters the full-screen set).
   - **Hysteresis** — every rect edge is expanded by a small buffer (default 3
     physical px) before the inside test, so a cursor sitting exactly on a
     boundary doesn't make the click-through toggle flicker at 60 Hz.
@@ -156,11 +170,18 @@ frontend also runs under plain `next dev` in a browser.
   (`WS_EX_NOACTIVATE`), interacting with it never dims or tabs out a fullscreen
   app underneath — the game keeps focus. The one exception is typing in a
   `focusable: true` region, which intentionally foregrounds the overlay.
-- **Taskbar exclusion.** The window is sized to exclude the primary monitor's
-  taskbar strip so an auto-hide taskbar can still reveal at the screen edge. If
+- **Taskbar reveal + Rude Window Manager.** An always-on-top window covering the
+  full desktop is classified by the shell's Rude Window Manager as
+  "full-screen" (the same bug class as the NVIDIA GeForce overlay), which
+  disables the taskbar's always-on-top property and blocks an auto-hide taskbar
+  from revealing at the screen edge. The fix is `mark_non_rude()`: the
+  undocumented `NonRudeHWND` window property plus a `SHELLHOOK` poke, applied in
+  `setup()` and re-asserted on every show/hide cycle. `overlay_bounds()`
+  additionally insets the primary monitor's taskbar strip — but only when the
+  taskbar is **visible**: with an auto-hide taskbar, `rcWork` equals the full
+  monitor, so that inset is a no-op and the whole desktop is still covered. If
   the primary monitor sits *inside* the virtual desktop (a taskbar on an
-  interior edge), that edge is not excluded — that would need a non-rectangular
-  window.
+  interior edge), that edge can't be excluded without a non-rectangular window.
 - **Whole-window granularity.** Click-through is per-window, not per-pixel. When
   the cursor is over *any* region, the *entire* window captures the cursor; a
   click on empty overlay area next to a region hits the webview, not the app
