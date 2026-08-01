@@ -6,8 +6,8 @@ import { isTauri } from "@tauri-apps/api/core";
 
 /**
  * Invisible client component that keeps Rust informed of the frontend's health
- * so the overlay can never lock the desktop (see
- * `src-tauri/src/overlay_watchdog.rs`).
+ * so the overlay can never lock the desktop (see the `hit-regions-rs` crate's
+ * `overlay_watchdog` module).
  *
  * - `overlay-ready`: emitted once on mount — Rust only shows the (initially
  *   hidden) window after this, so a failed page load never produces a

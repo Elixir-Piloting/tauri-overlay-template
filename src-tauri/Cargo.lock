@@ -1274,6 +1274,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "hit-regions-rs"
+version = "1.0.0"
+source = "git+https://github.com/Elixir-Piloting/hit-regions-rs?tag=v1.0.0#5d3d88e365c1d4fb453b2cbe44e542b8d06de636"
+dependencies = [
+ "log",
+ "serde",
+ "tauri",
+ "windows",
+]
+
+[[package]]
 name = "html5ever"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3157,14 +3168,12 @@ dependencies = [
 name = "tauri-overlay-template"
 version = "0.1.0"
 dependencies = [
+ "hit-regions-rs",
  "log",
- "serde",
- "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-log",
- "windows",
 ]
 
 [[package]]

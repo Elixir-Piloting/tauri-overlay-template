@@ -68,7 +68,7 @@ Our overlay: `WS_EX_LAYERED` + `WS_EX_TRANSPARENT` + `WS_EX_NOACTIVATE` + `WS_EX
 We added `overlay_bounds()`, which computes the window rect as the virtual desktop **minus the primary monitor's taskbar zone** (from `GetMonitorInfoW` → `rcWork`):
 
 ```rust
-// src-tauri/src/hit_regions.rs
+// hit-regions-rs/src/hit_regions.rs
 pub fn overlay_bounds() -> (i32, i32, i32, i32) {
     let (mut x, mut y, mut w, mut h) = virtual_desktop_bounds();
 
@@ -106,7 +106,7 @@ Fixed a *different* problem (clicking the overlay was de-activating a full-scree
 ### Attempt 3: `WS_EX_TOOLWINDOW` keeper
 
 ```rust
-// src-tauri/src/hit_regions.rs — re-asserted each poll tick because
+// hit-regions-rs/src/hit_regions.rs — re-asserted each poll tick because
 // tao's apply_diff rewrites the whole ex-style on any flag change
 fn assert_toolwindow(hwnd: HWND) {
     unsafe {
@@ -152,14 +152,14 @@ Because we are **inside the app that owns the offending window**, we don't need 
 
 ### Constraints for the Rust implementation
 
-We use the `windows` crate **0.61.3** (`Cargo.toml` currently enables `Win32_Foundation`, `Win32_Graphics_Gdi`, `Win32_UI_WindowsAndMessaging`). Verified availability in the generated bindings:
+We use the `windows` crate **0.61.3** (`hit-regions-rs/Cargo.toml` currently enables `Win32_Foundation`, `Win32_Graphics_Gdi`, `Win32_UI_WindowsAndMessaging`). Verified availability in the generated bindings:
 
 - ✅ `RegisterWindowMessageW` — `WindowsAndMessaging`
 - ✅ `SetPropW(hwnd, name, Option<HANDLE>)` — `WindowsAndMessaging` (value: `Some(HANDLE(-1))` = `INVALID_HANDLE_VALUE`; note it takes `Option<HANDLE>`, not a raw pointer)
 - ✅ `HSHELL_MONITORCHANGED` constant exists (`= 16u32`), and `SendMessageTimeoutW` / `PostMessageW` / `EnumWindows` should be available
 - ❌ **`BroadcastSystemMessage` is NOT in windows 0.61.3** (and `BSM_APPLICATIONS` / `BSF_POSTMESSAGE` are absent). The broadcast must be emulated by `EnumWindows` + `SendMessageTimeoutW`/`PostMessageW` of the registered `"SHELLHOOK"` message to top-level windows (the rude manager's hidden window is a top-level window, so a shotgun post reaches it — this is what RudeWindowFixer's `BSM_APPLICATIONS` broadcast effectively does).
 
-Timing matters: the property must be set and the exit-message sent **around the moment the window becomes full-screen and visible** (the kernel emits fullscreen-enter based on dimension changes of a visible window). Our window is created hidden, sized to full-screen in `setup()`, then shown only after the frontend emits `overlay-ready` (`src-tauri/src/overlay_watchdog.rs::show_window`). So the safe places are: right after sizing in `setup()`, and again inside `show_window()` on every show.
+Timing matters: the property must be set and the exit-message sent **around the moment the window becomes full-screen and visible** (the kernel emits fullscreen-enter based on dimension changes of a visible window). Our window is created hidden, sized to full-screen in `setup()`, then shown only after the frontend emits `overlay-ready` (`hit_regions::show_window`, in the `hit-regions-rs` crate). So the safe places are: right after sizing in `setup()`, and again inside `show_window()` on every show.
 
 ## Options to evaluate (for the frontier model)
 
@@ -168,9 +168,9 @@ Timing matters: the property must be set and the exit-message sent **around the 
 3. **Both**: shrink the window *and* mark it non-rude — belt and braces.
 4. **Ignore the taskbar entirely** (not really viable) — you can't make an auto-hide taskbar behave normally if the shell thinks a game is full-screen, short of RudeWindowFixer-style poking.
 
-Key files for context:
-- `src-tauri/src/hit_regions.rs` — `overlay_bounds()`, `assert_toolwindow()`, cursor poll loop
-- `src-tauri/src/overlay_watchdog.rs` — `show_window()` (where the property should also be (re)applied)
+Key files for context (Rust engine lives in the `hit-regions-rs` crate):
+- `hit-regions-rs/src/hit_regions.rs` — `overlay_bounds()`, `assert_toolwindow()`, cursor poll loop
+- `hit-regions-rs/src/overlay_watchdog.rs` — `show_window()` (where the property should also be (re)applied)
 - `src-tauri/src/lib.rs` — `setup()` (sizing, `set_ignore_cursor_events`, show-on-ready wiring)
 - `src-tauri/tauri.conf.json` — window flags (`alwaysOnTop`, `transparent`, `focusable: false`, `skipTaskbar`, `visible: false`)
 - Reference: `https://github.com/dechamps/RudeWindowFixer` (README + `RudeWindowFixer.c`)

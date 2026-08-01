@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { HitRegionProvider } from "@/lib/hit-regions";
+import { HitRegionProvider } from "hit-regions-web";
 import { OverlayLifecycle } from "@/lib/overlay-lifecycle";
 import "./globals.css";
 

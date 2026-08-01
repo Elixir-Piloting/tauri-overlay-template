@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "motion/react";
-import { HitRegion } from "@/lib/hit-regions";
+import { HitRegion } from "hit-regions-web";
 
 /**
  * One HTML surface hosting two overlay elements, proving the hit-region system

@@ -1,10 +1,9 @@
-mod hit_regions;
-mod overlay_watchdog;
-
 use std::sync::Arc;
 
-use hit_regions::{mark_non_rude, overlay_bounds, spawn_cursor_poll_thread, HitRegions};
-use overlay_watchdog::{exit_app, show_window, spawn_watchdog, Watchdog};
+use hit_regions::{
+    exit_app, mark_non_rude, overlay_bounds, show_window, spawn_cursor_poll_thread,
+    spawn_watchdog, HitRegions, Watchdog,
+};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -59,19 +58,19 @@ pub fn run() {
       // shows. A transparent, always-on-top, full-desktop window would otherwise
       // be classified as "full-screen", which pins the taskbar's always-on-top
       // property off and blocks an auto-hide taskbar from revealing at the
-      // screen edge. See mark_non_rude() in hit_regions.rs.
+      // screen edge. See mark_non_rude() in the hit-regions-rs crate.
       if let Ok(hwnd) = window.hwnd() {
         mark_non_rude(hwnd);
       }
 
-      // Fully click-through by default; the polling loop in hit_regions.rs
-      // manages this from here on.
+      // Fully click-through by default; the polling loop in the hit-regions-rs
+      // crate manages this from here on.
       window.set_ignore_cursor_events(true)?;
 
       // The window is NOT shown here. It stays hidden until the frontend emits
       // `overlay-ready` (see below), so a dead dev server or failed page load
-      // can never put a full-screen takeover on screen. The overlay_watchdog
-      // module enforces a timeout in case readiness never arrives.
+      // can never put a full-screen takeover on screen. The watchdog in the
+      // hit-regions-rs crate enforces a timeout in case readiness never arrives.
 
       // Failsafe: shared watchdog + event listeners.
       let watchdog: Arc<Watchdog> = app.state::<Arc<Watchdog>>().inner().clone();
@@ -105,7 +104,7 @@ pub fn run() {
         }
       });
 
-      spawn_watchdog(app.handle().clone(), watchdog.clone());
+      spawn_watchdog(app.handle().clone());
       spawn_cursor_poll_thread(app.handle().clone());
 
       // Tray icon: a persistent, always-available handle to the app. The window
